@@ -165,45 +165,41 @@ def classify_trend_basic(values):
         return "Sideways"
 
 def calculate_risk_reward_detailed(settlements, direction, tick_size):
-    """Calculate detailed risk and reward using ABS(ABS(start) - ABS(adverse_price)) / tick_size"""
+    """Calculate detailed risk and reward using abs(start_price - price) / tick_size"""
     valid_prices = [p for p in settlements if pd.notna(p)]
     
     if len(valid_prices) < 2:
         return None, None, None, None
     
     start_price = valid_prices[0]
+    min_price = min(valid_prices)
+    max_price = max(valid_prices)
     
     if direction == "Bullish":
         # Risk: maximum adverse movement (lowest point)
-        min_price = min(valid_prices)
-        risk_ticks = abs(abs(start_price) - abs(min_price)) / tick_size
+        risk_ticks = abs(start_price - min_price) / tick_size
         risk_amount = abs(start_price - min_price)
         
         # Reward: maximum favorable movement (highest point)
-        max_price = max(valid_prices)
-        reward_ticks = abs(abs(start_price) - abs(max_price)) / tick_size
+        reward_ticks = abs(start_price - max_price) / tick_size
         reward_amount = abs(max_price - start_price)
         
         return risk_ticks, risk_amount, reward_ticks, reward_amount
         
     elif direction == "Bearish":
         # Risk: maximum adverse movement (highest point)
-        max_price = max(valid_prices)
-        risk_ticks = abs(abs(start_price) - abs(max_price)) / tick_size
+        risk_ticks = abs(start_price - max_price) / tick_size
         risk_amount = abs(max_price - start_price)
         
         # Reward: maximum favorable movement (lowest point)
-        min_price = min(valid_prices)
-        reward_ticks = abs(abs(start_price) - abs(min_price)) / tick_size
+        reward_ticks = abs(start_price - min_price) / tick_size
         reward_amount = abs(start_price - min_price)
         
         return risk_ticks, risk_amount, reward_ticks, reward_amount
     
     else:  # Sideways
-        max_price = max(valid_prices)
-        min_price = min(valid_prices)
         risk_amount = max(abs(max_price - start_price), abs(start_price - min_price))
-        risk_ticks = abs(abs(start_price) - abs(max_price if abs(max_price - start_price) > abs(min_price - start_price) else min_price)) / tick_size
+        risk_ticks = abs(start_price - (max_price if abs(max_price - start_price) > abs(min_price - start_price) else min_price)) / tick_size
         return risk_ticks, risk_amount, None, None
 
 def calculate_atr(settlements):
@@ -574,9 +570,9 @@ if uploaded_file is not None:
                         # Statistics for favorable years only
                         st.subheader(f"📊 Favorable Years ({final_winner}) - Statistical Summary")
                         
+                        # Include ALL values (including 0s) for mean and median calculations
                         risk_ticks_list = [r['Risk (Ticks)'] for r in favorable_year_results if r['Risk (Ticks)'] is not None]
                         reward_ticks_list = [r['Reward (Ticks)'] for r in favorable_year_results if r['Reward (Ticks)'] is not None]
-                        rr_ratios = [r['Reward (Ticks)']/r['Risk (Ticks)'] for r in favorable_year_results if r['Risk (Ticks)'] is not None and r['Reward (Ticks)'] is not None and r['Risk (Ticks)'] > 0]
                         
                         col1, col2, col3 = st.columns(3)
                         
@@ -585,6 +581,7 @@ if uploaded_file is not None:
                             if risk_ticks_list:
                                 st.metric("Max Risk (Ticks)", f"{np.max(risk_ticks_list):.2f}")
                                 st.metric("Max Risk ($)", f"${np.max(risk_ticks_list) * tick_value:.2f}")
+                                # Include ALL values including 0s
                                 st.metric("Mean Risk (Ticks)", f"{np.mean(risk_ticks_list):.2f}")
                                 st.metric("Mean Risk ($)", f"${np.mean(risk_ticks_list) * tick_value:.2f}")
                                 st.metric("Median Risk (Ticks)", f"{np.median(risk_ticks_list):.2f}")
@@ -597,6 +594,7 @@ if uploaded_file is not None:
                             if reward_ticks_list:
                                 st.metric("Max Reward (Ticks)", f"{np.max(reward_ticks_list):.2f}")
                                 st.metric("Max Reward ($)", f"${np.max(reward_ticks_list) * tick_value:.2f}")
+                                # Include ALL values including 0s
                                 st.metric("Mean Reward (Ticks)", f"{np.mean(reward_ticks_list):.2f}")
                                 st.metric("Mean Reward ($)", f"${np.mean(reward_ticks_list) * tick_value:.2f}")
                                 st.metric("Median Reward (Ticks)", f"{np.median(reward_ticks_list):.2f}")
@@ -606,11 +604,40 @@ if uploaded_file is not None:
                         
                         with col3:
                             st.markdown("### ⚖️ Risk:Reward Ratios")
-                            if rr_ratios:
-                                st.metric("Mean R:R", f"1:{np.mean(rr_ratios):.2f}")
-                                st.metric("Median R:R", f"1:{np.median(rr_ratios):.2f}")
-                                st.metric("Best R:R", f"1:{np.max(rr_ratios):.2f}")
-                                st.metric("Worst R:R", f"1:{np.min(rr_ratios):.2f}")
+                            if risk_ticks_list and reward_ticks_list:
+                                # Mean R:R: Use ALL values (including 0s)
+                                mean_risk = np.mean(risk_ticks_list)
+                                mean_reward = np.mean(reward_ticks_list)
+                                if mean_risk > 0:
+                                    st.metric("Mean R:R", f"1:{mean_reward/mean_risk:.2f}")
+                                else:
+                                    st.metric("Mean R:R", "N/A")
+                                
+                                # Median R:R: Use ALL values (including 0s)
+                                median_risk = np.median(risk_ticks_list)
+                                median_reward = np.median(reward_ticks_list)
+                                if median_risk > 0:
+                                    st.metric("Median R:R", f"1:{median_reward/median_risk:.2f}")
+                                else:
+                                    st.metric("Median R:R", "N/A")
+                                
+                                # Best R:R: Min Risk : Max Reward
+                                min_risk = np.min(risk_ticks_list)
+                                max_reward = np.max(reward_ticks_list)
+                                if min_risk == 0:
+                                    st.metric("Best R:R", "1:∞ (Unlimited)")
+                                elif min_risk > 0:
+                                    st.metric("Best R:R", f"1:{max_reward/min_risk:.2f}")
+                                else:
+                                    st.metric("Best R:R", "N/A")
+                                
+                                # Worst R:R: Max Risk : Min Reward
+                                max_risk = np.max(risk_ticks_list)
+                                min_reward = np.min(reward_ticks_list)
+                                if max_risk > 0:
+                                    st.metric("Worst R:R", f"1:{min_reward/max_risk:.2f}")
+                                else:
+                                    st.metric("Worst R:R", "N/A")
                             else:
                                 st.warning("No R:R data available")
                         
