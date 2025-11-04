@@ -292,6 +292,45 @@ def determine_year_seasonality(all_brackets, year):
         'basic': {'trend': basic_dominant, 'probability': basic_probability, 'counts': basic_counts}
     }
 
+def analyze_sideways_scenario(year_data, direction, tick_size, tick_value):
+    """Analyze risk/reward for a specific direction (Bullish or Bearish) across all years"""
+    results = []
+    
+    for year, info in year_data.items():
+        settlements = info['settlements']
+        
+        risk_ticks, risk_amount, reward_ticks, reward_amount = calculate_risk_reward_detailed(
+            settlements, 
+            direction, 
+            tick_size
+        )
+        atr = calculate_atr(settlements)
+        
+        # Get start, end and extreme prices for display
+        valid_prices = [p for p in settlements if pd.notna(p)]
+        start_price = valid_prices[0] if valid_prices else None
+        end_price = valid_prices[-1] if valid_prices else None
+        min_price = min(valid_prices) if valid_prices else None
+        max_price = max(valid_prices) if valid_prices else None
+        
+        results.append({
+            'Year': year,
+            'Start Price': start_price,
+            'End Price': end_price,
+            'Min Price': min_price,
+            'Max Price': max_price,
+            'Risk (Ticks)': risk_ticks,
+            'Risk (Amount)': risk_amount,
+            'Risk ($)': risk_ticks * tick_value if risk_ticks is not None else None,
+            'Reward (Ticks)': reward_ticks,
+            'Reward (Amount)': reward_amount,
+            'Reward ($)': reward_ticks * tick_value if reward_ticks is not None else None,
+            'ATR': atr,
+            'Risk:Reward': f"1:{reward_ticks/risk_ticks:.2f}" if risk_ticks and reward_ticks and risk_ticks > 0 else 'N/A'
+        })
+    
+    return results
+
 # Main Application Logic
 if uploaded_file is not None:
     # Load data
@@ -451,229 +490,444 @@ if uploaded_file is not None:
                         
                         st.markdown("---")
                         
-                        # Risk & Reward Analysis for ALL YEARS
-                        st.header(f"⚠️ STEP 2: Risk & Reward Analysis - All Years")
-                        
-                        st.info(f"Analyzing all historical years. Winning direction: **{final_winner}**")
-                        
-                        # Separate years into favorable and unfavorable
-                        favorable_years_data = {}
-                        unfavorable_years_data = {}
-                        
-                        for year, info in year_data.items():
-                            year_trend = year_seasonality[year]['regression']['trend']
-                            if year_trend == final_winner:
-                                favorable_years_data[year] = info
-                            else:
-                                unfavorable_years_data[year] = info
-                        
-                        st.success(f"Found {len(favorable_years_data)} favorable years ({final_winner}) and {len(unfavorable_years_data)} unfavorable years")
-                        
-                        # Calculate risk & reward for FAVORABLE years
-                        favorable_year_results = []
-                        
-                        for year, info in favorable_years_data.items():
-                            settlements = info['settlements']
+                        # Check if seasonality is SIDEWAYS
+                        if final_winner == "Sideways":
+                            st.header("↔️ SIDEWAYS DETECTED - Comparative Analysis")
+                            st.warning("🔍 Seasonality is Sideways. Analyzing both Bullish and Bearish scenarios to determine best direction...")
                             
-                            risk_ticks, risk_amount, reward_ticks, reward_amount = calculate_risk_reward_detailed(
-                                settlements, 
-                                final_winner, 
-                                tick_size
-                            )
-                            atr = calculate_atr(settlements)
+                            # Analyze Bullish scenario
+                            st.subheader("📈 Scenario 1: If Going BULLISH")
+                            bullish_results = analyze_sideways_scenario(year_data, "Bullish", tick_size, tick_value)
                             
-                            # Get start, end and extreme prices for display
-                            valid_prices = [p for p in settlements if pd.notna(p)]
-                            start_price = valid_prices[0] if valid_prices else None
-                            end_price = valid_prices[-1] if valid_prices else None
-                            min_price = min(valid_prices) if valid_prices else None
-                            max_price = max(valid_prices) if valid_prices else None
+                            # Display Bullish results
+                            bullish_display_df = pd.DataFrame([
+                                {
+                                    'Year': r['Year'],
+                                    'Start Price': f"{r['Start Price']:.4f}" if r['Start Price'] is not None else 'N/A',
+                                    'End Price': f"{r['End Price']:.4f}" if r['End Price'] is not None else 'N/A',
+                                    'Min Price': f"{r['Min Price']:.4f}" if r['Min Price'] is not None else 'N/A',
+                                    'Max Price': f"{r['Max Price']:.4f}" if r['Max Price'] is not None else 'N/A',
+                                    'Risk (Ticks)': f"{r['Risk (Ticks)']:.2f}" if r['Risk (Ticks)'] is not None else 'N/A',
+                                    'Risk ($)': f"${r['Risk ($)']:.2f}" if r['Risk ($)'] is not None else 'N/A',
+                                    'Reward (Ticks)': f"{r['Reward (Ticks)']:.2f}" if r['Reward (Ticks)'] is not None else 'N/A',
+                                    'Reward ($)': f"${r['Reward ($)']:.2f}" if r['Reward ($)'] is not None else 'N/A',
+                                    'Risk:Reward': r['Risk:Reward'],
+                                    'ATR': f"{r['ATR']:.4f}" if r['ATR'] is not None else 'N/A'
+                                }
+                                for r in bullish_results
+                            ])
+                            st.dataframe(bullish_display_df, use_container_width=True)
                             
-                            favorable_year_results.append({
-                                'Year': year,
-                                'Type': 'Favorable',
-                                'Start Price': start_price,
-                                'End Price': end_price,
-                                'Min Price': min_price,
-                                'Max Price': max_price,
-                                'Risk (Ticks)': risk_ticks,
-                                'Risk (Amount)': risk_amount,
-                                'Risk ($)': risk_ticks * tick_value if risk_ticks is not None else None,
-                                'Reward (Ticks)': reward_ticks,
-                                'Reward (Amount)': reward_amount,
-                                'Reward ($)': reward_ticks * tick_value if reward_ticks is not None else None,
-                                'ATR': atr,
-                                'Risk:Reward': f"1:{reward_ticks/risk_ticks:.2f}" if risk_ticks and reward_ticks and risk_ticks > 0 else 'N/A'
-                            })
-                        
-                        # Calculate ONLY RISK for UNFAVORABLE years
-                        unfavorable_year_results = []
-                        
-                        for year, info in unfavorable_years_data.items():
-                            settlements = info['settlements']
+                            # Bullish statistics
+                            bullish_risk_ticks = [r['Risk (Ticks)'] for r in bullish_results if r['Risk (Ticks)'] is not None]
+                            bullish_reward_ticks = [r['Reward (Ticks)'] for r in bullish_results if r['Reward (Ticks)'] is not None]
                             
-                            risk_ticks, risk_amount, _, _ = calculate_risk_reward_detailed(
-                                settlements, 
-                                final_winner,  # Use winning direction to calculate risk
-                                tick_size
-                            )
-                            atr = calculate_atr(settlements)
-                            
-                            # Get start, end and extreme prices for display
-                            valid_prices = [p for p in settlements if pd.notna(p)]
-                            start_price = valid_prices[0] if valid_prices else None
-                            end_price = valid_prices[-1] if valid_prices else None
-                            min_price = min(valid_prices) if valid_prices else None
-                            max_price = max(valid_prices) if valid_prices else None
-                            
-                            unfavorable_year_results.append({
-                                'Year': year,
-                                'Type': 'Unfavorable',
-                                'Start Price': start_price,
-                                'End Price': end_price,
-                                'Min Price': min_price,
-                                'Max Price': max_price,
-                                'Risk (Ticks)': risk_ticks,
-                                'Risk (Amount)': risk_amount,
-                                'Risk ($)': risk_ticks * tick_value if risk_ticks is not None else None,
-                                'Reward (Ticks)': None,
-                                'Reward (Amount)': None,
-                                'Reward ($)': None,
-                                'ATR': atr,
-                                'Risk:Reward': 'N/A'
-                            })
-                        
-                        # Combine all results
-                        all_year_results = favorable_year_results + unfavorable_year_results
-                        
-                        # Display all years data
-                        st.subheader(f"📋 All Years - Detailed Analysis")
-                        display_df = pd.DataFrame([
-                            {
-                                'Year': r['Year'],
-                                'Type': r['Type'],
-                                'Start Price': f"{r['Start Price']:.4f}" if r['Start Price'] is not None else 'N/A',
-                                'End Price': f"{r['End Price']:.4f}" if r['End Price'] is not None else 'N/A',
-                                'Min Price': f"{r['Min Price']:.4f}" if r['Min Price'] is not None else 'N/A',
-                                'Max Price': f"{r['Max Price']:.4f}" if r['Max Price'] is not None else 'N/A',
-                                'Risk (Ticks)': f"{r['Risk (Ticks)']:.2f}" if r['Risk (Ticks)'] is not None else 'N/A',
-                                'Risk ($)': f"${r['Risk ($)']:.2f}" if r['Risk ($)'] is not None else 'N/A',
-                                'Reward (Ticks)': f"{r['Reward (Ticks)']:.2f}" if r['Reward (Ticks)'] is not None else 'N/A',
-                                'Reward ($)': f"${r['Reward ($)']:.2f}" if r['Reward ($)'] is not None else 'N/A',
-                                'Risk:Reward': r['Risk:Reward'],
-                                'ATR': f"{r['ATR']:.4f}" if r['ATR'] is not None else 'N/A'
-                            }
-                            for r in all_year_results
-                        ])
-                        st.dataframe(display_df, use_container_width=True)
-                        
-                        # Statistics for favorable years only
-                        st.subheader(f"📊 Favorable Years ({final_winner}) - Statistical Summary")
-                        
-                        # Include ALL values (including 0s) for mean and median calculations
-                        risk_ticks_list = [r['Risk (Ticks)'] for r in favorable_year_results if r['Risk (Ticks)'] is not None]
-                        reward_ticks_list = [r['Reward (Ticks)'] for r in favorable_year_results if r['Reward (Ticks)'] is not None]
-                        
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            st.markdown("### 🔴 Risk Statistics")
-                            if risk_ticks_list:
-                                st.metric("Max Risk (Ticks)", f"{np.max(risk_ticks_list):.2f}")
-                                st.metric("Max Risk ($)", f"${np.max(risk_ticks_list) * tick_value:.2f}")
-                                # Include ALL values including 0s
-                                st.metric("Mean Risk (Ticks)", f"{np.mean(risk_ticks_list):.2f}")
-                                st.metric("Mean Risk ($)", f"${np.mean(risk_ticks_list) * tick_value:.2f}")
-                                st.metric("Median Risk (Ticks)", f"{np.median(risk_ticks_list):.2f}")
-                                st.metric("Median Risk ($)", f"${np.median(risk_ticks_list) * tick_value:.2f}")
-                            else:
-                                st.warning("No risk data available")
-                        
-                        with col2:
-                            st.markdown("### 🟢 Reward Statistics")
-                            if reward_ticks_list:
-                                st.metric("Max Reward (Ticks)", f"{np.max(reward_ticks_list):.2f}")
-                                st.metric("Max Reward ($)", f"${np.max(reward_ticks_list) * tick_value:.2f}")
-                                # Include ALL values including 0s
-                                st.metric("Mean Reward (Ticks)", f"{np.mean(reward_ticks_list):.2f}")
-                                st.metric("Mean Reward ($)", f"${np.mean(reward_ticks_list) * tick_value:.2f}")
-                                st.metric("Median Reward (Ticks)", f"{np.median(reward_ticks_list):.2f}")
-                                st.metric("Median Reward ($)", f"${np.median(reward_ticks_list) * tick_value:.2f}")
-                            else:
-                                st.warning("No reward data available")
-                        
-                        with col3:
-                            st.markdown("### ⚖️ Risk:Reward Ratios")
-                            if risk_ticks_list and reward_ticks_list:
-                                # Mean R:R: Use ALL values (including 0s)
-                                mean_risk = np.mean(risk_ticks_list)
-                                mean_reward = np.mean(reward_ticks_list)
-                                if mean_risk > 0:
-                                    st.metric("Mean R:R", f"1:{mean_reward/mean_risk:.2f}")
-                                else:
-                                    st.metric("Mean R:R", "N/A")
-                                
-                                # Median R:R: Use ALL values (including 0s)
-                                median_risk = np.median(risk_ticks_list)
-                                median_reward = np.median(reward_ticks_list)
-                                if median_risk > 0:
-                                    st.metric("Median R:R", f"1:{median_reward/median_risk:.2f}")
-                                else:
-                                    st.metric("Median R:R", "N/A")
-                                
-                                # Best R:R: Min Risk : Max Reward
-                                min_risk = np.min(risk_ticks_list)
-                                max_reward = np.max(reward_ticks_list)
-                                if min_risk == 0:
-                                    st.metric("Best R:R", "1:∞ (Unlimited)")
-                                elif min_risk > 0:
-                                    st.metric("Best R:R", f"1:{max_reward/min_risk:.2f}")
-                                else:
-                                    st.metric("Best R:R", "N/A")
-                                
-                                # Worst R:R: Max Risk : Min Reward
-                                max_risk = np.max(risk_ticks_list)
-                                min_reward = np.min(reward_ticks_list)
-                                if max_risk > 0:
-                                    st.metric("Worst R:R", f"1:{min_reward/max_risk:.2f}")
-                                else:
-                                    st.metric("Worst R:R", "N/A")
-                            else:
-                                st.warning("No R:R data available")
-                        
-                        # ATR Analysis for all years
-                        st.subheader(f"📊 ATR Analysis - All Years")
-                        
-                        atr_table = []
-                        for result in all_year_results:
-                            atr_table.append({
-                                'Year': result['Year'],
-                                'Type': result['Type'],
-                                'ATR': f"{result['ATR']:.4f}" if result['ATR'] is not None else 'N/A',
-                                'Risk (Ticks)': f"{result['Risk (Ticks)']:.2f}" if result['Risk (Ticks)'] is not None else 'N/A'
-                            })
-                        
-                        atr_df = pd.DataFrame(atr_table)
-                        st.dataframe(atr_df, use_container_width=True)
-                        
-                        # Average ATR for favorable and unfavorable years
-                        favorable_atrs = [r['ATR'] for r in favorable_year_results if r['ATR'] is not None]
-                        unfavorable_atrs = [r['ATR'] for r in unfavorable_year_results if r['ATR'] is not None]
-                        
-                        if favorable_atrs or unfavorable_atrs:
-                            col1, col2, col3, col4 = st.columns(4)
+                            col1, col2, col3 = st.columns(3)
                             with col1:
-                                if favorable_atrs:
-                                    st.metric(f"📈 Avg ATR (Favorable)", f"{np.mean(favorable_atrs):.4f}")
+                                st.markdown("#### 🔴 Risk (Bullish)")
+                                if bullish_risk_ticks:
+                                    st.metric("Max Risk", f"{np.max(bullish_risk_ticks):.2f} ticks (${np.max(bullish_risk_ticks)*tick_value:.2f})")
+                                    st.metric("Mean Risk", f"{np.mean(bullish_risk_ticks):.2f} ticks (${np.mean(bullish_risk_ticks)*tick_value:.2f})")
+                                    st.metric("Median Risk", f"{np.median(bullish_risk_ticks):.2f} ticks (${np.median(bullish_risk_ticks)*tick_value:.2f})")
+                            
                             with col2:
-                                if favorable_atrs:
-                                    st.metric(f"📈 Median ATR (Favorable)", f"{np.median(favorable_atrs):.4f}")
+                                st.markdown("#### 🟢 Reward (Bullish)")
+                                if bullish_reward_ticks:
+                                    st.metric("Max Reward", f"{np.max(bullish_reward_ticks):.2f} ticks (${np.max(bullish_reward_ticks)*tick_value:.2f})")
+                                    st.metric("Mean Reward", f"{np.mean(bullish_reward_ticks):.2f} ticks (${np.mean(bullish_reward_ticks)*tick_value:.2f})")
+                                    st.metric("Median Reward", f"{np.median(bullish_reward_ticks):.2f} ticks (${np.median(bullish_reward_ticks)*tick_value:.2f})")
+                            
                             with col3:
-                                if unfavorable_atrs:
-                                    st.metric(f"📉 Avg ATR (Unfavorable)", f"{np.mean(unfavorable_atrs):.4f}")
-                            with col4:
-                                if unfavorable_atrs:
-                                    st.metric(f"📉 Median ATR (Unfavorable)", f"{np.median(unfavorable_atrs):.4f}")
+                                st.markdown("#### ⚖️ R:R (Bullish)")
+                                if bullish_risk_ticks and bullish_reward_ticks:
+                                    mean_rr_bull = np.mean(bullish_reward_ticks) / np.mean(bullish_risk_ticks) if np.mean(bullish_risk_ticks) > 0 else 0
+                                    median_rr_bull = np.median(bullish_reward_ticks) / np.median(bullish_risk_ticks) if np.median(bullish_risk_ticks) > 0 else 0
+                                    st.metric("Mean R:R", f"1:{mean_rr_bull:.2f}")
+                                    st.metric("Median R:R", f"1:{median_rr_bull:.2f}")
+                            
+                            st.markdown("---")
+                            
+                            # Analyze Bearish scenario
+                            st.subheader("📉 Scenario 2: If Going BEARISH")
+                            bearish_results = analyze_sideways_scenario(year_data, "Bearish", tick_size, tick_value)
+                            
+                            # Display Bearish results
+                            bearish_display_df = pd.DataFrame([
+                                {
+                                    'Year': r['Year'],
+                                    'Start Price': f"{r['Start Price']:.4f}" if r['Start Price'] is not None else 'N/A',
+                                    'End Price': f"{r['End Price']:.4f}" if r['End Price'] is not None else 'N/A',
+                                    'Min Price': f"{r['Min Price']:.4f}" if r['Min Price'] is not None else 'N/A',
+                                    'Max Price': f"{r['Max Price']:.4f}" if r['Max Price'] is not None else 'N/A',
+                                    'Risk (Ticks)': f"{r['Risk (Ticks)']:.2f}" if r['Risk (Ticks)'] is not None else 'N/A',
+                                    'Risk ($)': f"${r['Risk ($)']:.2f}" if r['Risk ($)'] is not None else 'N/A',
+                                    'Reward (Ticks)': f"{r['Reward (Ticks)']:.2f}" if r['Reward (Ticks)'] is not None else 'N/A',
+                                    'Reward ($)': f"${r['Reward ($)']:.2f}" if r['Reward ($)'] is not None else 'N/A',
+                                    'Risk:Reward': r['Risk:Reward'],
+                                    'ATR': f"{r['ATR']:.4f}" if r['ATR'] is not None else 'N/A'
+                                }
+                                for r in bearish_results
+                            ])
+                            st.dataframe(bearish_display_df, use_container_width=True)
+                            
+                            # Bearish statistics
+                            bearish_risk_ticks = [r['Risk (Ticks)'] for r in bearish_results if r['Risk (Ticks)'] is not None]
+                            bearish_reward_ticks = [r['Reward (Ticks)'] for r in bearish_results if r['Reward (Ticks)'] is not None]
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.markdown("#### 🔴 Risk (Bearish)")
+                                if bearish_risk_ticks:
+                                    st.metric("Max Risk", f"{np.max(bearish_risk_ticks):.2f} ticks (${np.max(bearish_risk_ticks)*tick_value:.2f})")
+                                    st.metric("Mean Risk", f"{np.mean(bearish_risk_ticks):.2f} ticks (${np.mean(bearish_risk_ticks)*tick_value:.2f})")
+                                    st.metric("Median Risk", f"{np.median(bearish_risk_ticks):.2f} ticks (${np.median(bearish_risk_ticks)*tick_value:.2f})")
+                            
+                            with col2:
+                                st.markdown("#### 🟢 Reward (Bearish)")
+                                if bearish_reward_ticks:
+                                    st.metric("Max Reward", f"{np.max(bearish_reward_ticks):.2f} ticks (${np.max(bearish_reward_ticks)*tick_value:.2f})")
+                                    st.metric("Mean Reward", f"{np.mean(bearish_reward_ticks):.2f} ticks (${np.mean(bearish_reward_ticks)*tick_value:.2f})")
+                                    st.metric("Median Reward", f"{np.median(bearish_reward_ticks):.2f} ticks (${np.median(bearish_reward_ticks)*tick_value:.2f})")
+                            
+                            with col3:
+                                st.markdown("#### ⚖️ R:R (Bearish)")
+                                if bearish_risk_ticks and bearish_reward_ticks:
+                                    mean_rr_bear = np.mean(bearish_reward_ticks) / np.mean(bearish_risk_ticks) if np.mean(bearish_risk_ticks) > 0 else 0
+                                    median_rr_bear = np.median(bearish_reward_ticks) / np.median(bearish_risk_ticks) if np.median(bearish_risk_ticks) > 0 else 0
+                                    st.metric("Mean R:R", f"1:{mean_rr_bear:.2f}")
+                                    st.metric("Median R:R", f"1:{median_rr_bear:.2f}")
+                            
+                            st.markdown("---")
+                            
+                            # COMPARISON AND RECOMMENDATION
+                            st.header("🏆 FINAL RECOMMENDATION - Best Direction for Sideways")
+                            
+                            # Compare based on:
+                            # 1. Mean Risk:Reward ratio (higher is better)
+                            # 2. Mean Risk (lower is better)
+                            # 3. Mean Reward (higher is better)
+                            
+                            recommendation_scores = {
+                                'Bullish': 0,
+                                'Bearish': 0
+                            }
+                            
+                            comparison_data = []
+                            
+                            # Compare Mean Risk:Reward
+                            if bullish_risk_ticks and bullish_reward_ticks and bearish_risk_ticks and bearish_reward_ticks:
+                                mean_rr_bull = np.mean(bullish_reward_ticks) / np.mean(bullish_risk_ticks) if np.mean(bullish_risk_ticks) > 0 else 0
+                                mean_rr_bear = np.mean(bearish_reward_ticks) / np.mean(bearish_risk_ticks) if np.mean(bearish_risk_ticks) > 0 else 0
+                                
+                                comparison_data.append({
+                                    'Metric': 'Mean Risk:Reward',
+                                    'Bullish': f"1:{mean_rr_bull:.2f}",
+                                    'Bearish': f"1:{mean_rr_bear:.2f}",
+                                    'Winner': '📈 Bullish' if mean_rr_bull > mean_rr_bear else '📉 Bearish' if mean_rr_bear > mean_rr_bull else '↔️ Tie'
+                                })
+                                
+                                if mean_rr_bull > mean_rr_bear:
+                                    recommendation_scores['Bullish'] += 3
+                                elif mean_rr_bear > mean_rr_bull:
+                                    recommendation_scores['Bearish'] += 3
+                                
+                                # Compare Mean Risk (lower is better)
+                                mean_risk_bull = np.mean(bullish_risk_ticks)
+                                mean_risk_bear = np.mean(bearish_risk_ticks)
+                                
+                                comparison_data.append({
+                                    'Metric': 'Mean Risk (Lower is Better)',
+                                    'Bullish': f"{mean_risk_bull:.2f} ticks (${mean_risk_bull*tick_value:.2f})",
+                                    'Bearish': f"{mean_risk_bear:.2f} ticks (${mean_risk_bear*tick_value:.2f})",
+                                    'Winner': '📈 Bullish' if mean_risk_bull < mean_risk_bear else '📉 Bearish' if mean_risk_bear < mean_risk_bull else '↔️ Tie'
+                                })
+                                
+                                if mean_risk_bull < mean_risk_bear:
+                                    recommendation_scores['Bullish'] += 2
+                                elif mean_risk_bear < mean_risk_bull:
+                                    recommendation_scores['Bearish'] += 2
+                                
+                                # Compare Mean Reward (higher is better)
+                                mean_reward_bull = np.mean(bullish_reward_ticks)
+                                mean_reward_bear = np.mean(bearish_reward_ticks)
+                                
+                                comparison_data.append({
+                                    'Metric': 'Mean Reward (Higher is Better)',
+                                    'Bullish': f"{mean_reward_bull:.2f} ticks (${mean_reward_bull*tick_value:.2f})",
+                                    'Bearish': f"{mean_reward_bear:.2f} ticks (${mean_reward_bear*tick_value:.2f})",
+                                    'Winner': '📈 Bullish' if mean_reward_bull > mean_reward_bear else '📉 Bearish' if mean_reward_bear > mean_reward_bull else '↔️ Tie'
+                                })
+                                
+                                if mean_reward_bull > mean_reward_bear:
+                                    recommendation_scores['Bullish'] += 2
+                                elif mean_reward_bear > mean_reward_bull:
+                                    recommendation_scores['Bearish'] += 2
+                                
+                                # Compare Median Risk:Reward
+                                median_rr_bull = np.median(bullish_reward_ticks) / np.median(bullish_risk_ticks) if np.median(bullish_risk_ticks) > 0 else 0
+                                median_rr_bear = np.median(bearish_reward_ticks) / np.median(bearish_risk_ticks) if np.median(bearish_risk_ticks) > 0 else 0
+                                
+                                comparison_data.append({
+                                    'Metric': 'Median Risk:Reward',
+                                    'Bullish': f"1:{median_rr_bull:.2f}",
+                                    'Bearish': f"1:{median_rr_bear:.2f}",
+                                    'Winner': '📈 Bullish' if median_rr_bull > median_rr_bear else '📉 Bearish' if median_rr_bear > median_rr_bull else '↔️ Tie'
+                                })
+                                
+                                if median_rr_bull > median_rr_bear:
+                                    recommendation_scores['Bullish'] += 1
+                                elif median_rr_bear > median_rr_bull:
+                                    recommendation_scores['Bearish'] += 1
+                            
+                            # Display comparison table
+                            comparison_df = pd.DataFrame(comparison_data)
+                            st.dataframe(comparison_df, use_container_width=True)
+                            
+                            # Determine final recommendation
+                            recommended_direction = max(recommendation_scores, key=recommendation_scores.get)
+                            
+                            # Display final recommendation
+                            st.markdown("---")
+                            col1, col2, col3 = st.columns([1, 2, 1])
+                            
+                            with col2:
+                                if recommended_direction == "Bullish":
+                                    st.success(f"### 🎯 RECOMMENDED DIRECTION: 📈 **BULLISH**")
+                                    st.markdown(f"**Score:** Bullish {recommendation_scores['Bullish']} vs Bearish {recommendation_scores['Bearish']}")
+                                    st.info("Based on comparative analysis of Risk:Reward ratios, Mean Risk, and Mean Reward across all historical years, **going Bullish offers better risk/reward profile**.")
+                                else:
+                                    st.success(f"### 🎯 RECOMMENDED DIRECTION: 📉 **BEARISH**")
+                                    st.markdown(f"**Score:** Bearish {recommendation_scores['Bearish']} vs Bullish {recommendation_scores['Bullish']}")
+                                    st.info("Based on comparative analysis of Risk:Reward ratios, Mean Risk, and Mean Reward across all historical years, **going Bearish offers better risk/reward profile**.")
+                            
+                            # Override final_winner with recommendation
+                            final_winner = recommended_direction
+                        
+                        else:
+                            # Original flow for Bullish/Bearish seasonality
+                            # Risk & Reward Analysis for ALL YEARS
+                            st.header(f"⚠️ STEP 2: Risk & Reward Analysis - All Years")
+                            
+                            st.info(f"Analyzing all historical years. Winning direction: **{final_winner}**")
+                            
+                            # Separate years into favorable and unfavorable
+                            favorable_years_data = {}
+                            unfavorable_years_data = {}
+                            
+                            for year, info in year_data.items():
+                                year_trend = year_seasonality[year]['regression']['trend']
+                                if year_trend == final_winner:
+                                    favorable_years_data[year] = info
+                                else:
+                                    unfavorable_years_data[year] = info
+                            
+                            st.success(f"Found {len(favorable_years_data)} favorable years ({final_winner}) and {len(unfavorable_years_data)} unfavorable years")
+                            
+                            # Calculate risk & reward for FAVORABLE years
+                            favorable_year_results = []
+                            
+                            for year, info in favorable_years_data.items():
+                                settlements = info['settlements']
+                                
+                                risk_ticks, risk_amount, reward_ticks, reward_amount = calculate_risk_reward_detailed(
+                                    settlements, 
+                                    final_winner, 
+                                    tick_size
+                                )
+                                atr = calculate_atr(settlements)
+                                
+                                # Get start, end and extreme prices for display
+                                valid_prices = [p for p in settlements if pd.notna(p)]
+                                start_price = valid_prices[0] if valid_prices else None
+                                end_price = valid_prices[-1] if valid_prices else None
+                                min_price = min(valid_prices) if valid_prices else None
+                                max_price = max(valid_prices) if valid_prices else None
+                                
+                                favorable_year_results.append({
+                                    'Year': year,
+                                    'Type': 'Favorable',
+                                    'Start Price': start_price,
+                                    'End Price': end_price,
+                                    'Min Price': min_price,
+                                    'Max Price': max_price,
+                                    'Risk (Ticks)': risk_ticks,
+                                    'Risk (Amount)': risk_amount,
+                                    'Risk ($)': risk_ticks * tick_value if risk_ticks is not None else None,
+                                    'Reward (Ticks)': reward_ticks,
+                                    'Reward (Amount)': reward_amount,
+                                    'Reward ($)': reward_ticks * tick_value if reward_ticks is not None else None,
+                                    'ATR': atr,
+                                    'Risk:Reward': f"1:{reward_ticks/risk_ticks:.2f}" if risk_ticks and reward_ticks and risk_ticks > 0 else 'N/A'
+                                })
+                            
+                            # Calculate ONLY RISK for UNFAVORABLE years
+                            unfavorable_year_results = []
+                            
+                            for year, info in unfavorable_years_data.items():
+                                settlements = info['settlements']
+                                
+                                risk_ticks, risk_amount, _, _ = calculate_risk_reward_detailed(
+                                    settlements, 
+                                    final_winner,  # Use winning direction to calculate risk
+                                    tick_size
+                                )
+                                atr = calculate_atr(settlements)
+                                
+                                # Get start, end and extreme prices for display
+                                valid_prices = [p for p in settlements if pd.notna(p)]
+                                start_price = valid_prices[0] if valid_prices else None
+                                end_price = valid_prices[-1] if valid_prices else None
+                                min_price = min(valid_prices) if valid_prices else None
+                                max_price = max(valid_prices) if valid_prices else None
+                                
+                                unfavorable_year_results.append({
+                                    'Year': year,
+                                    'Type': 'Unfavorable',
+                                    'Start Price': start_price,
+                                    'End Price': end_price,
+                                    'Min Price': min_price,
+                                    'Max Price': max_price,
+                                    'Risk (Ticks)': risk_ticks,
+                                    'Risk (Amount)': risk_amount,
+                                    'Risk ($)': risk_ticks * tick_value if risk_ticks is not None else None,
+                                    'Reward (Ticks)': None,
+                                    'Reward (Amount)': None,
+                                    'Reward ($)': None,
+                                    'ATR': atr,
+                                    'Risk:Reward': 'N/A'
+                                })
+                            
+                            # Combine all results
+                            all_year_results = favorable_year_results + unfavorable_year_results
+                            
+                            # Display all years data
+                            st.subheader(f"📋 All Years - Detailed Analysis")
+                            display_df = pd.DataFrame([
+                                {
+                                    'Year': r['Year'],
+                                    'Type': r['Type'],
+                                    'Start Price': f"{r['Start Price']:.4f}" if r['Start Price'] is not None else 'N/A',
+                                    'End Price': f"{r['End Price']:.4f}" if r['End Price'] is not None else 'N/A',
+                                    'Min Price': f"{r['Min Price']:.4f}" if r['Min Price'] is not None else 'N/A',
+                                    'Max Price': f"{r['Max Price']:.4f}" if r['Max Price'] is not None else 'N/A',
+                                    'Risk (Ticks)': f"{r['Risk (Ticks)']:.2f}" if r['Risk (Ticks)'] is not None else 'N/A',
+                                    'Risk ($)': f"${r['Risk ($)']:.2f}" if r['Risk ($)'] is not None else 'N/A',
+                                    'Reward (Ticks)': f"{r['Reward (Ticks)']:.2f}" if r['Reward (Ticks)'] is not None else 'N/A',
+                                    'Reward ($)': f"${r['Reward ($)']:.2f}" if r['Reward ($)'] is not None else 'N/A',
+                                    'Risk:Reward': r['Risk:Reward'],
+                                    'ATR': f"{r['ATR']:.4f}" if r['ATR'] is not None else 'N/A'
+                                }
+                                for r in all_year_results
+                            ])
+                            st.dataframe(display_df, use_container_width=True)
+                            
+                            # Statistics for favorable years only
+                            st.subheader(f"📊 Favorable Years ({final_winner}) - Statistical Summary")
+                            
+                            # Include ALL values (including 0s) for mean and median calculations
+                            risk_ticks_list = [r['Risk (Ticks)'] for r in favorable_year_results if r['Risk (Ticks)'] is not None]
+                            reward_ticks_list = [r['Reward (Ticks)'] for r in favorable_year_results if r['Reward (Ticks)'] is not None]
+                            
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.markdown("### 🔴 Risk Statistics")
+                                if risk_ticks_list:
+                                    st.metric("Max Risk (Ticks)", f"{np.max(risk_ticks_list):.2f}")
+                                    st.metric("Max Risk ($)", f"${np.max(risk_ticks_list) * tick_value:.2f}")
+                                    # Include ALL values including 0s
+                                    st.metric("Mean Risk (Ticks)", f"{np.mean(risk_ticks_list):.2f}")
+                                    st.metric("Mean Risk ($)", f"${np.mean(risk_ticks_list) * tick_value:.2f}")
+                                    st.metric("Median Risk (Ticks)", f"{np.median(risk_ticks_list):.2f}")
+                                    st.metric("Median Risk ($)", f"${np.median(risk_ticks_list) * tick_value:.2f}")
+                                else:
+                                    st.warning("No risk data available")
+                            
+                            with col2:
+                                st.markdown("### 🟢 Reward Statistics")
+                                if reward_ticks_list:
+                                    st.metric("Max Reward (Ticks)", f"{np.max(reward_ticks_list):.2f}")
+                                    st.metric("Max Reward ($)", f"${np.max(reward_ticks_list) * tick_value:.2f}")
+                                    # Include ALL values including 0s
+                                    st.metric("Mean Reward (Ticks)", f"{np.mean(reward_ticks_list):.2f}")
+                                    st.metric("Mean Reward ($)", f"${np.mean(reward_ticks_list) * tick_value:.2f}")
+                                    st.metric("Median Reward (Ticks)", f"{np.median(reward_ticks_list):.2f}")
+                                    st.metric("Median Reward ($)", f"${np.median(reward_ticks_list) * tick_value:.2f}")
+                                else:
+                                    st.warning("No reward data available")
+                            
+                            with col3:
+                                st.markdown("### ⚖️ Risk:Reward Ratios")
+                                if risk_ticks_list and reward_ticks_list:
+                                    # Mean R:R: Use ALL values (including 0s)
+                                    mean_risk = np.mean(risk_ticks_list)
+                                    mean_reward = np.mean(reward_ticks_list)
+                                    if mean_risk > 0:
+                                        st.metric("Mean R:R", f"1:{mean_reward/mean_risk:.2f}")
+                                    else:
+                                        st.metric("Mean R:R", "N/A")
+                                    
+                                    # Median R:R: Use ALL values (including 0s)
+                                    median_risk = np.median(risk_ticks_list)
+                                    median_reward = np.median(reward_ticks_list)
+                                    if median_risk > 0:
+                                        st.metric("Median R:R", f"1:{median_reward/median_risk:.2f}")
+                                    else:
+                                        st.metric("Median R:R", "N/A")
+                                    
+                                    # Best R:R: Min Risk : Max Reward
+                                    min_risk = np.min(risk_ticks_list)
+                                    max_reward = np.max(reward_ticks_list)
+                                    if min_risk == 0:
+                                        st.metric("Best R:R", "1:∞ (Unlimited)")
+                                    elif min_risk > 0:
+                                        st.metric("Best R:R", f"1:{max_reward/min_risk:.2f}")
+                                    else:
+                                        st.metric("Best R:R", "N/A")
+                                    
+                                    # Worst R:R: Max Risk : Min Reward
+                                    max_risk = np.max(risk_ticks_list)
+                                    min_reward = np.min(reward_ticks_list)
+                                    if max_risk > 0:
+                                        st.metric("Worst R:R", f"1:{min_reward/max_risk:.2f}")
+                                    else:
+                                        st.metric("Worst R:R", "N/A")
+                                else:
+                                    st.warning("No R:R data available")
+                            
+                            # ATR Analysis for all years
+                            st.subheader(f"📊 ATR Analysis - All Years")
+                            
+                            atr_table = []
+                            for result in all_year_results:
+                                atr_table.append({
+                                    'Year': result['Year'],
+                                    'Type': result['Type'],
+                                    'ATR': f"{result['ATR']:.4f}" if result['ATR'] is not None else 'N/A',
+                                    'Risk (Ticks)': f"{result['Risk (Ticks)']:.2f}" if result['Risk (Ticks)'] is not None else 'N/A'
+                                })
+                            
+                            atr_df = pd.DataFrame(atr_table)
+                            st.dataframe(atr_df, use_container_width=True)
+                            
+                            # Average ATR for favorable and unfavorable years
+                            favorable_atrs = [r['ATR'] for r in favorable_year_results if r['ATR'] is not None]
+                            unfavorable_atrs = [r['ATR'] for r in unfavorable_year_results if r['ATR'] is not None]
+                            
+                            if favorable_atrs or unfavorable_atrs:
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    if favorable_atrs:
+                                        st.metric(f"📈 Avg ATR (Favorable)", f"{np.mean(favorable_atrs):.4f}")
+                                with col2:
+                                    if favorable_atrs:
+                                        st.metric(f"📈 Median ATR (Favorable)", f"{np.median(favorable_atrs):.4f}")
+                                with col3:
+                                    if unfavorable_atrs:
+                                        st.metric(f"📉 Avg ATR (Unfavorable)", f"{np.mean(unfavorable_atrs):.4f}")
+                                with col4:
+                                    if unfavorable_atrs:
+                                        st.metric(f"📉 Median ATR (Unfavorable)", f"{np.median(unfavorable_atrs):.4f}")
                 
             except Exception as e:
                 st.error(f"❌ Error during analysis: {str(e)}")
@@ -708,4 +962,5 @@ st.sidebar.info("""
 - Risk & reward assessment in ticks and dollars
 - ATR-based volatility analysis
 - Historical pattern recognition
+- **NEW:** Sideways comparative analysis (Bullish vs Bearish)
 """)
